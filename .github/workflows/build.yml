@@ -14,12 +14,12 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install python deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt 'pyinstaller>=6.10'
 
       - name: Download ffmpeg/ffprobe (universal)
         run: |
@@ -50,12 +50,12 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.13"
 
       - name: Install python deps
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt 'pyinstaller>=6.10'
         shell: bash
 
       - name: Download ffmpeg/ffprobe
