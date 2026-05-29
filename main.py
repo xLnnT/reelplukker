@@ -19,6 +19,7 @@ for _p in _EXTRA_PATHS:
 os.environ["PATH"] = _path
 
 import atexit
+import json
 import re
 import shutil
 import subprocess
@@ -49,11 +50,36 @@ AUTHOR_URL = "https://www.instagram.com/xLnnT/"
 COOKIES_FILE = Path.home() / ".reelplukker" / "cookies.txt"
 
 # --- Theme ---
-BG = "#000000"
-FG = "#FFFFFF"
-DIM = "#666666"
-HOVER_BG = "#222222"
+DARK_THEME = {
+    "bg": "#000000",
+    "fg": "#FFFFFF",
+    "dim": "#666666",
+    "hover": "#222222",
+}
+LIGHT_THEME = {
+    "bg": "#FAFAFA",
+    "fg": "#0A0A0A",
+    "dim": "#888888",
+    "hover": "#E8E8E8",
+}
+T = dict(DARK_THEME)
+
+
+def set_theme(name: str):
+    T.clear()
+    T.update(LIGHT_THEME if name == "light" else DARK_THEME)
+
+
+def current_theme_name() -> str:
+    return "light" if T["bg"] == LIGHT_THEME["bg"] else "dark"
+
+
 MONO = "Menlo"
+THEME_ICON_DARK = "☀"
+THEME_ICON_LIGHT = "☽"
+
+CONFIG_DIR = Path.home() / ".reelplukker"
+CONFIG_FILE = CONFIG_DIR / "config.json"
 
 # --- Window ---
 WINDOW_SIZE = "1180x860"
@@ -228,7 +254,7 @@ def rounded_rect(canvas, x1, y1, x2, y2, r=12, **kw):
 
 class RoundedBox(tk.Canvas):
     def __init__(self, parent, radius=12, border=2, **kw):
-        super().__init__(parent, bg=BG, highlightthickness=0, bd=0, **kw)
+        super().__init__(parent, bg=T["bg"], highlightthickness=0, bd=0, **kw)
         self._radius = radius
         self._border = border
         self._shape = None
@@ -241,7 +267,7 @@ class RoundedBox(tk.Canvas):
         b = self._border
         self._shape = rounded_rect(
             self, b, b, w - b, h - b,
-            r=self._radius, fill="", outline=FG, width=b,
+            r=self._radius, fill="", outline=T["fg"], width=b,
         )
 
 
@@ -250,7 +276,7 @@ class HistoryCell(tk.Canvas):
     _status_font = None
 
     def __init__(self, parent, **kw):
-        super().__init__(parent, bg=BG, highlightthickness=0, bd=0, **kw)
+        super().__init__(parent, bg=T["bg"], highlightthickness=0, bd=0, **kw)
         self.name = ""
         self.status = ""
         self.progress = None
@@ -336,7 +362,7 @@ class HistoryCell(tk.Canvas):
         if self._pil_source is not None and inner_w > 0 and inner_h > 0:
             self._render_thumbnail(inner_x0, inner_y0, inner_w, inner_h)
 
-        rounded_rect(self, 3, 3, w - 3, h - 3, r=16, fill="", outline=FG, width=3)
+        rounded_rect(self, 3, 3, w - 3, h - 3, r=16, fill="", outline=T["fg"], width=3)
 
         safe_x0 = SAFE_INSET
         safe_x1 = w - SAFE_INSET
@@ -373,7 +399,7 @@ class HistoryCell(tk.Canvas):
 
             self.create_rectangle(
                 bar_left, bar_top, bar_right, bar_top + bar_h,
-                fill=BG, outline="",
+                fill=T["bg"], outline="",
             )
 
             text_x = bar_left + TEXT_BAR_PAD_X
@@ -382,14 +408,14 @@ class HistoryCell(tk.Canvas):
                 self.create_text(
                     text_x, y_cursor,
                     text=name_text,
-                    fill=FG, font=self._name_font, anchor="nw",
+                    fill=T["fg"], font=self._name_font, anchor="nw",
                 )
                 y_cursor += name_h + gap
             if status_text:
                 self.create_text(
                     text_x, y_cursor,
                     text=status_text,
-                    fill=DIM, font=self._status_font, anchor="nw",
+                    fill=T["dim"], font=self._status_font, anchor="nw",
                 )
 
         if has_progress:
@@ -435,25 +461,25 @@ class HistoryCell(tk.Canvas):
             return
         self.create_rectangle(
             x0, bar_y, x1, bar_y + PROGRESS_BAR_H,
-            fill=DIM, outline="",
+            fill=T["dim"], outline="",
         )
         p = max(0.0, min(1.0, self.progress))
         fill_x = x0 + (x1 - x0) * p
         if fill_x > x0:
             self.create_rectangle(
                 x0, bar_y, fill_x, bar_y + PROGRESS_BAR_H,
-                fill=FG, outline="",
+                fill=T["fg"], outline="",
             )
 
     def _draw_folder_icon(self, cx, cy, size):
         s = size
         x0, y0 = cx - s / 2, cy - s / 3
         x1, y1 = cx + s / 2, cy + s / 2
-        self.create_rectangle(x0, y0, x1, y1, fill="", outline=FG, width=1.4)
+        self.create_rectangle(x0, y0, x1, y1, fill="", outline=T["fg"], width=1.4)
         tab_w = s * 0.45
         self.create_rectangle(
             x0, y0 - s * 0.22, x0 + tab_w, y0,
-            fill="", outline=FG, width=1.4,
+            fill="", outline=T["fg"], width=1.4,
         )
 
     @staticmethod
@@ -478,8 +504,13 @@ class HistoryCell(tk.Canvas):
 class DownloaderApp:
     def __init__(self, root):
         self.root = root
+        self._dim_widgets = []
+        self._menus = []
+        self._theme_toggle = None
+        self._load_config()
+
         root.title(APP_NAME)
-        root.configure(bg=BG)
+        root.configure(bg=T["bg"])
         root.geometry(WINDOW_SIZE)
         root.minsize(*WINDOW_MIN)
 
@@ -490,17 +521,95 @@ class DownloaderApp:
 
         self._build_ui()
 
+    def _load_config(self):
+        try:
+            data = json.loads(CONFIG_FILE.read_text())
+            set_theme(data.get("theme", "dark"))
+        except Exception:
+            pass
+
+    def _save_config(self):
+        try:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            CONFIG_FILE.write_text(json.dumps({"theme": current_theme_name()}))
+        except Exception:
+            pass
+
+    def _toggle_theme(self):
+        set_theme("light" if current_theme_name() == "dark" else "dark")
+        self._apply_theme()
+        self._save_config()
+
+    def _apply_theme(self):
+        self.root.configure(bg=T["bg"])
+        self._apply_theme_tree(self.root)
+        for w in self._dim_widgets:
+            try:
+                w.configure(bg=T["bg"], fg=T["dim"])
+            except tk.TclError:
+                pass
+        for m in self._menus:
+            try:
+                m.configure(
+                    bg=T["bg"], fg=T["fg"],
+                    activebackground=T["hover"], activeforeground=T["fg"],
+                )
+            except tk.TclError:
+                pass
+        if self._theme_toggle is not None:
+            self._theme_toggle.configure(
+                bg=T["bg"], fg=T["fg"],
+                text=THEME_ICON_DARK if current_theme_name() == "dark" else THEME_ICON_LIGHT,
+            )
+        if getattr(self, "_placeholder_active", False):
+            self.url_entry.configure(fg=T["dim"])
+        for cell in self.cells:
+            cell.configure(bg=T["bg"])
+            cell._redraw()
+
+    def _apply_theme_tree(self, widget):
+        try:
+            cls = widget.winfo_class()
+            if cls == "Frame":
+                widget.configure(bg=T["bg"])
+            elif cls == "Label":
+                widget.configure(bg=T["bg"], fg=T["fg"])
+            elif cls == "Entry":
+                widget.configure(
+                    bg=T["bg"], fg=T["fg"], insertbackground=T["fg"],
+                )
+            elif cls == "Canvas":
+                widget.configure(bg=T["bg"])
+                if hasattr(widget, "_redraw"):
+                    try:
+                        widget._redraw()
+                    except tk.TclError:
+                        pass
+        except tk.TclError:
+            pass
+        for child in widget.winfo_children():
+            self._apply_theme_tree(child)
+
     def _build_ui(self):
         root = self.root
 
         self._build_footer(root)
 
+        self._theme_toggle = tk.Label(
+            root,
+            text=THEME_ICON_DARK if current_theme_name() == "dark" else THEME_ICON_LIGHT,
+            bg=T["bg"], fg=T["fg"], font=(MONO, 14),
+            cursor=CLICK_CURSOR,
+        )
+        self._theme_toggle.place(relx=1.0, x=-24, y=24, anchor="ne")
+        self._theme_toggle.bind("<Button-1>", lambda _: self._toggle_theme())
+
         tk.Label(
             root, text=TITLE_TEXT,
-            bg=BG, fg=FG, font=(MONO, 34),
+            bg=T["bg"], fg=T["fg"], font=(MONO, 34),
         ).pack(pady=(72, 56))
 
-        input_row = tk.Frame(root, bg=BG)
+        input_row = tk.Frame(root, bg=T["bg"])
         input_row.pack(fill="x", padx=PADDING_X, pady=(0, 28))
 
         url_box = RoundedBox(input_row, radius=URL_RADIUS, border=2, height=INPUT_HEIGHT)
@@ -509,7 +618,7 @@ class DownloaderApp:
         self._placeholder_active = True
         self.url_entry = tk.Entry(
             url_box,
-            bg=BG, fg=DIM, insertbackground=FG,
+            bg=T["bg"], fg=T["dim"], insertbackground=T["fg"],
             font=(MONO, 13), bd=0, highlightthickness=0,
             relief="flat",
         )
@@ -538,14 +647,15 @@ class DownloaderApp:
 
         fmt_label = tk.Label(
             fmt_box, textvariable=self._format_display,
-            bg=BG, fg=FG, font=(MONO, 11), cursor=CLICK_CURSOR,
+            bg=T["bg"], fg=T["fg"], font=(MONO, 11), cursor=CLICK_CURSOR,
         )
         fmt_box.create_window(90, INPUT_HEIGHT // 2, window=fmt_label)
 
         fmt_menu = tk.Menu(
-            self.root, tearoff=0, bg=BG, fg=FG,
-            activebackground=HOVER_BG, activeforeground=FG,
+            self.root, tearoff=0, bg=T["bg"], fg=T["fg"],
+            activebackground=T["hover"], activeforeground=T["fg"],
         )
+        self._menus.append(fmt_menu)
         for f in FORMATS:
             fmt_menu.add_command(label=f, command=lambda v=f: self.format_var.set(v))
 
@@ -558,7 +668,7 @@ class DownloaderApp:
             width=INPUT_HEIGHT, height=INPUT_HEIGHT,
         )
         dl_btn.pack(side="left")
-        dl_label = tk.Label(dl_btn, text="↓", bg=BG, fg=FG, font=(MONO, 22), cursor=CLICK_CURSOR)
+        dl_label = tk.Label(dl_btn, text="↓", bg=T["bg"], fg=T["fg"], font=(MONO, 22), cursor=CLICK_CURSOR)
         dl_btn.create_window(INPUT_HEIGHT // 2, INPUT_HEIGHT // 2, window=dl_label)
         click_dl = lambda _: self.start_download()
         dl_label.bind("<Button-1>", click_dl)
@@ -566,10 +676,10 @@ class DownloaderApp:
 
         tk.Label(
             root, text="History",
-            bg=BG, fg=FG, font=(MONO, 20),
+            bg=T["bg"], fg=T["fg"], font=(MONO, 20),
         ).pack(pady=(24, 18))
 
-        grid = tk.Frame(root, bg=BG)
+        grid = tk.Frame(root, bg=T["bg"])
         grid.pack(fill="both", expand=True, padx=PADDING_X, pady=(0, 40))
 
         self.cells = []
@@ -584,20 +694,22 @@ class DownloaderApp:
             grid.rowconfigure(r, weight=1, uniform="row")
 
     def _build_footer(self, root):
-        footer = tk.Frame(root, bg=BG)
+        footer = tk.Frame(root, bg=T["bg"])
         footer.pack(side="bottom", fill="x", pady=(0, 14))
 
-        inner = tk.Frame(footer, bg=BG)
+        inner = tk.Frame(footer, bg=T["bg"])
         inner.pack()
 
-        tk.Label(
+        prefix_label = tk.Label(
             inner, text=f"{APP_NAME} made by ",
-            bg=BG, fg=DIM, font=(MONO, 9),
-        ).pack(side="left")
+            bg=T["bg"], fg=T["dim"], font=(MONO, 9),
+        )
+        prefix_label.pack(side="left")
+        self._dim_widgets.append(prefix_label)
 
         link = tk.Label(
             inner, text=AUTHOR_NAME,
-            bg=BG, fg=FG, font=(MONO, 9, "underline"),
+            bg=T["bg"], fg=T["fg"], font=(MONO, 9, "underline"),
             cursor=CLICK_CURSOR,
         )
         link.pack(side="left")
@@ -622,13 +734,13 @@ class DownloaderApp:
     def _clear_placeholder(self, _):
         if self._placeholder_active:
             self.url_entry.delete(0, "end")
-            self.url_entry.config(fg=FG)
+            self.url_entry.config(fg=T["fg"])
             self._placeholder_active = False
 
     def _restore_placeholder(self, _):
         if not self.url_entry.get().strip():
             self.url_entry.insert(0, PLACEHOLDER_TEXT)
-            self.url_entry.config(fg=DIM)
+            self.url_entry.config(fg=T["dim"])
             self._placeholder_active = True
 
     def _get_url(self):
@@ -1036,7 +1148,7 @@ class DownloaderApp:
 if __name__ == "__main__":
     root = tk.Tk()
     try:
-        root.tk_setPalette(background=BG, foreground=FG)
+        root.tk_setPalette(background=T["bg"], foreground=T["fg"])
     except tk.TclError:
         pass
     DownloaderApp(root)

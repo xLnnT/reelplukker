@@ -4,12 +4,16 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules
 
 APP_NAME = "ReelPlukker"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.2.0"
 APP_ID = "be.lnnt.reelplukker"
 
 IS_WIN = sys.platform == "win32"
 IS_MAC = sys.platform == "darwin"
 BIN_EXT = ".exe" if IS_WIN else ""
+
+ICON_PATH = "assets/icon.ico" if IS_WIN else "assets/icon.icns"
+if not Path(ICON_PATH).exists():
+    ICON_PATH = None
 
 # ffmpeg/ffprobe must be downloaded to ./bin/ before running pyinstaller.
 BIN_DIR = Path("bin")
@@ -51,7 +55,7 @@ exe = EXE(
     strip=False,
     upx=False,
     console=False,
-    icon=None,
+    icon=ICON_PATH,
 )
 
 coll = COLLECT(
@@ -69,7 +73,7 @@ if IS_MAC:
     app = BUNDLE(
         coll,
         name=f"{APP_NAME}.app",
-        icon=None,
+        icon=ICON_PATH,
         bundle_identifier=APP_ID,
         version=APP_VERSION,
         info_plist={
