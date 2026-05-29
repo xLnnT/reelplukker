@@ -194,6 +194,15 @@ S_WAITING_ENC = "Waiting to encode"
 S_RE_ENCODING = "Re-encoding"
 S_EXTRACTING_MP3 = "Extracting MP3"
 
+KEYCHAIN_HINT = "Keychain blocked — see README cookies.txt setup"
+KEYCHAIN_ERROR_MARKERS = (
+    "errSec", "Keychain", "keychain",
+    "Chrome Safe Storage", "Safe Storage",
+    "OSError(-", "-26873", "-25293", "-25291",
+    "_decrypt_inner", "encrypted_value",
+    "could not be opened",
+)
+
 
 def _cli_python() -> str:
     for name in ("python3.14", "python3"):
@@ -934,8 +943,11 @@ class DownloaderApp:
                 gdl_cmd, capture_output=True, text=True, timeout=GALLERY_TIMEOUT,
             )
             if result.returncode != 0:
-                err = (result.stderr or result.stdout)[-300:]
-                raise RuntimeError(f"gallery-dl failed: {err}")
+                raw_err = result.stderr or result.stdout or ""
+                if (any(m in raw_err for m in KEYCHAIN_ERROR_MARKERS)
+                        and not COOKIES_FILE.exists()):
+                    raise RuntimeError(KEYCHAIN_HINT)
+                raise RuntimeError(f"gallery-dl failed: {raw_err[-300:]}")
 
             slides = sorted(
                 p for p in work_dir.iterdir()
