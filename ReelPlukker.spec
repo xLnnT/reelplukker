@@ -4,7 +4,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules
 
 APP_NAME = "ReelPlukker"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 APP_ID = "be.lnnt.reelplukker"
 
 IS_WIN = sys.platform == "win32"
@@ -26,7 +26,6 @@ for name in ("ffmpeg", "ffprobe"):
 hiddenimports = (
     collect_submodules("gallery_dl")
     + collect_submodules("yt_dlp")
-    + ["curl_cffi"]
 )
 
 a = Analysis(
