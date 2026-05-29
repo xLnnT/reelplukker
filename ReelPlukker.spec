@@ -4,7 +4,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_submodules
 
 APP_NAME = "ReelPlukker"
-APP_VERSION = "0.2.0"
+APP_VERSION = "0.2.1"
 APP_ID = "be.lnnt.reelplukker"
 
 IS_WIN = sys.platform == "win32"
